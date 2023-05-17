@@ -40,8 +40,11 @@
 #include <linux/init_task.h>
 #include <linux/uaccess.h>
 
+
 #include "internal.h"
 #include "mount.h"
+#define CREATE_TRACE_POINTS
+#include "fs_trace.h"
 
 /* [Feb-1997 T. Schoebel-Theuer]
  * Fundamental changes in the pathname lookup mechanisms (namei)
@@ -3634,6 +3637,7 @@ static struct file *path_openat(struct nameidata *nd,
 struct file *do_filp_open(int dfd, struct filename *pathname,
 		const struct open_flags *op)
 {
+	FS_ATRACE_FUNC_BEGIN();
 	struct nameidata nd;
 	int flags = op->lookup_flags;
 	struct file *filp;
@@ -3645,6 +3649,14 @@ struct file *do_filp_open(int dfd, struct filename *pathname,
 	if (unlikely(filp == ERR_PTR(-ESTALE)))
 		filp = path_openat(&nd, op, flags | LOOKUP_REVAL);
 	restore_nameidata();
+	if (IS_ERR(filp)) {
+		FS_ATRACE_INT("do_filp_open ret", PTR_ERR(filp));
+		trace_printk("kanli path:%s ret:%d\n", pathname->name, PTR_ERR(filp));
+	} else {
+		FS_ATRACE_INT("do_filp_open ret", 0);
+		trace_printk("kanli path:%s ret:%d\n", pathname->name, PTR_ERR(filp));
+	}
+	FS_ATRACE_FUNC_END();
 	return filp;
 }
 
