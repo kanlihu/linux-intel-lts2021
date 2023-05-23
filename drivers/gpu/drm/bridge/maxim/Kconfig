@@ -1,0 +1,12 @@
+config MAXIM_GMSL_DP_SERIALIZER
+   bool "Maxim GMSL DP Serializer"
+   depends on I2C
+   select DRM_DISPLAY_DP_HELPER
+   select DRM_DISPLAY_HELPER
+   select DRM_KMS_HELPER
+   select REGMAP_I2C
+   help
+    This driver supports the MAXIM DP GMSL Serializer.
+    The Intel SOC will send DP output to the Maxim serializer.
+    The Maxim serializer will take this DP output,
+    and convert it into GMSL video data.
