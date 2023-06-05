@@ -3,6 +3,9 @@
 
 #define MAX_GMSL_DP_SER_REG_13			0xD
 
+#define MAX_GMSL_DP_SER_REG_5			0x45
+#define MAX_GMSL_DP_SER_REG_5_VAL		0x5A
+
 #define MAX_GMSL_DP_SER_CTRL3			0x13
 #define MAX_GMSL_DP_SER_CTRL3_LOCK_MASK		(1 << 3)
 #define MAX_GMSL_DP_SER_CTRL3_LOCK_VAL		(1 << 3)
@@ -75,5 +78,6 @@
 #define MAX_GMSL_DP_SER_TX3_2		0xAB
 #define MAX_GMSL_DP_SER_TX3_3		0xAF
 
+#define MAX_GMSL_ARRAY_SIZE		4
 #endif
 

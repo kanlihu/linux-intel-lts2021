@@ -8,95 +8,37 @@
 #include <linux/fwnode.h>
 #include <linux/gpio/consumer.h>
 #include <linux/gpio/driver.h>
+#include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/i2c-mux.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/of_graph.h>
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/regmap.h>
-#include <linux/of_gpio.h>
 #include <linux/workqueue.h>
-#include <linux/of_device.h>
-#include <linux/of.h>
+#include <max_96749.h>
 
-#define MAX_GMSL_DP_SER_REG_13			0xD
+#define I2C_BUS_AVAILABLE       (          15 )              // I2C Bus available in USB
+#define SLAVE_SER_DEVICE_NAME   ( "MAX_GMSL_DP_SER" )        // Device and Driver Name
+#define SLAVE_DES_DEVICE_NAME   ( "MAX_GMSL_DP_DES" )         // Device and Driver Name
+#define MAX_SER_SLAVE_ADDR      (       0x80 )              // MAX SER Slave Address
+#define MAX_DES_SLAVE_ADDR      (       0x90 )              // MAX DES Slave Address
+#define MAX_GMSL_DP_SER_PWRDN_GPIO       ("tegra_main_gpio TEGRA234_MAIN_GPIO(G, 3) GPIO_ACTIVE_HIGH")
+#define MAX_GMSL_DP_SER_ERRB_GPIO        ("tegra_main_gpio TEGRA234_MAIN_GPIO(G, 7) 0")
+#define MAX_GMSL_DP_SER_DPRX_LINK_RATE   (0X1E)
+#define MAX_GMSL_DP_SER_DPRX_LANE_COUNT  (0x04)
+#define MAX_GMSL_DP_SER_ENABLE_MST       (0x0)
+#define MAX_GMSL_DP_SER_MST_PAYLOAD_IDS  {0x1, 0x2, 0x3, 0x4}
+#define MAX_GMSL_DP_SER_GMSL_STREAM_IDS  {0x0, 0x1, 0x2, 0x3}
+#define MAX_GMSL_DP_SER_GMSL_LINK_SELECT {0x0, 0x0, 0x1, 0x1}
+#define MAX_GMSL_DP_SER_ENABLE_DP_FEC    (0x1)
+#define MAX_GMSL_DP_SER_ENABLE_DSC       {0x1, 0x0}
+#define MAX_GMSL_DP_SER_ENABLE_GMSL_FEC  {0x1, 0x0}
 
-#define MAX_GMSL_DP_SER_CTRL3			0x13
-#define MAX_GMSL_DP_SER_CTRL3_LOCK_MASK		(1 << 3)
-#define MAX_GMSL_DP_SER_CTRL3_LOCK_VAL		(1 << 3)
-
-#define MAX_GMSL_DP_SER_INTR8			0x20
-#define MAX_GMSL_DP_SER_INTR8_MASK		(1 << 0)
-#define MAX_GMSL_DP_SER_INTR8_VAL		0x1
-
-#define MAX_GMSL_DP_SER_INTR9			0x21
-#define MAX_GMSL_DP_SER_LOSS_OF_LOCK_FLAG	(1 << 0)
-
-#define MAX_GMSL_DP_SER_LINK_CTRL_PHY_A		0x29
-#define MAX_GMSL_DP_SER_LINK_CTRL_A_MASK	(1 << 0)
-
-#define MAX_GMSL_DP_SER_LCTRL2_A		0x2A
-#define MAX_GMSL_DP_SER_LCTRL2_B		0x34
-#define MAX_GMSL_DP_SER_LCTRL2_LOCK_MASK	(1 << 0)
-#define MAX_GMSL_DP_SER_LCTRL2_LOCK_VAL		0x1
-
-#define MAX_GMSL_DP_SER_LINK_CTRL_PHY_B		0x33
-#define MAX_GMSL_DP_SER_LINK_CTRL_B_MASK	(1 << 0)
-
-#define MAX_GMSL_DP_SER_VID_TX_X		0x100
-#define MAX_GMSL_DP_SER_VID_TX_Y		0x110
-#define MAX_GMSL_DP_SER_VID_TX_Z		0x120
-#define MAX_GMSL_DP_SER_VID_TX_U		0x130
-#define MAX_GMSL_DP_SER_ENABLE_LINK_A		0x0
-#define MAX_GMSL_DP_SER_ENABLE_LINK_B		0x1
-#define MAX_GMSL_DP_SER_ENABLE_LINK_AB		0x2
-
-#define MAX_GMSL_DP_SER_VID_TX_MASK		(1 << 0)
-#define MAX_GMSL_DP_SER_VID_TX_LINK_MASK	(3 << 1)
-#define MAX_GMSL_DP_SER_LINK_SEL_SHIFT_VAL	0x1
-
-#define MAX_GMSL_DP_SER_PHY_EDP_0_CTRL0_B0	0x6064
-#define MAX_GMSL_DP_SER_PHY_EDP_0_CTRL0_B1	0x6065
-#define MAX_GMSL_DP_SER_PHY_EDP_1_CTRL0_B0	0x6164
-#define MAX_GMSL_DP_SER_PHY_EDP_1_CTRL0_B1	0x6165
-#define MAX_GMSL_DP_SER_PHY_EDP_2_CTRL0_B0	0x6264
-#define MAX_GMSL_DP_SER_PHY_EDP_2_CTRL0_B1	0x6265
-#define MAX_GMSL_DP_SER_PHY_EDP_3_CTRL0_B0	0x6364
-#define MAX_GMSL_DP_SER_PHY_EDP_3_CTRL0_B1	0x6365
-
-#define MAX_GMSL_DP_SER_DPRX_TRAIN		0x641A
-#define MAX_GMSL_DP_SER_DPRX_TRAIN_STATE_MASK	(0xF << 4)
-#define MAX_GMSL_DP_SER_DPRX_TRAIN_STATE_VAL	0xF0
-
-#define MAX_GMSL_DP_SER_LINK_ENABLE		0x7000
-#define MAX_GMSL_DP_SER_LINK_ENABLE_MASK	(1 << 0)
-
-#define MAX_GMSL_DP_SER_MISC_CONFIG_B1		0x7019
-#define MAX_GMSL_DP_SER_MISC_CONFIG_B1_MASK	(1 << 0)
-#define MAX_GMSL_DP_SER_MISC_CONFIG_B1_VAL	0x1
-#define MAX_GMSL_DP_SER_MAX_LINK_COUNT		0x7070
-#define MAX_GMSL_DP_SER_MAX_LINK_RATE		0x7074
-
-#define MAX_GMSL_DP_SER_LOCAL_EDID		0x7084
-
-#define MAX_GMSL_DP_SER_I2C_SPEED_CAPABILITY		0x70A4
-#define MAX_GMSL_DP_SER_I2C_SPEED_CAPABILITY_MASK	(0x3F << 0)
-#define MAX_GMSL_DP_SER_I2C_SPEED_CAPABILITY_100KBPS	0x8
-
-#define MAX_GMSL_DP_SER_MST_PAYLOAD_ID_0	0x7904
-#define MAX_GMSL_DP_SER_MST_PAYLOAD_ID_1	0x7908
-#define MAX_GMSL_DP_SER_MST_PAYLOAD_ID_2	0x790C
-#define MAX_GMSL_DP_SER_MST_PAYLOAD_ID_3	0x7910
-
-#define MAX_GMSL_DP_SER_TX3_0		0xA3
-#define MAX_GMSL_DP_SER_TX3_1		0xA7
-#define MAX_GMSL_DP_SER_TX3_2		0xAB
-#define MAX_GMSL_DP_SER_TX3_3		0xAF
-
-#define MAX_GMSL_ARRAY_SIZE		4
-
+static struct i2c_adapter *max_i2c_adapter     = NULL;  // I2C Adapter Structure
+static struct i2c_client *max_ser_i2c_client   = NULL;
+static struct i2c_client *max_des_i2c_client   = NULL;
 
 struct max_gmsl_dp_ser_source {
 	struct fwnode_handle *fwnode;
@@ -109,6 +51,7 @@ static const struct regmap_config max_gmsl_dp_ser_i2c_regmap = {
 
 struct max_gmsl_dp_ser_priv {
 	struct i2c_client *client;
+	struct i2c_client *max_des_i2c_client;
 	struct gpio_desc *gpiod_pwrdn;
 	u8 dprx_lane_count;
 	u8 dprx_link_rate;
@@ -430,118 +373,24 @@ static int max_gmsl_dp_ser_init(struct device *dev)
 	return ret;
 }
 
-static int max_gmsl_dp_ser_parse_mst_props(struct i2c_client *client,
-					   struct max_gmsl_dp_ser_priv *priv)
-{
-	struct device *dev = &priv->client->dev;
-	struct device_node *ser = dev->of_node;
-	int err = 0;
-	bool ret;
-
-	priv->enable_mst = of_property_read_bool(ser,
-						 "enable-mst");
-	if (priv->enable_mst)
-		dev_info(dev, "%s: MST mode enabled:\n", __func__);
-	else
-		dev_info(dev, "%s: MST mode not enabled:\n", __func__);
-
-	if (priv->enable_mst) {
-		err = of_property_read_variable_u8_array(ser,
-							 "mst-payload-ids",
-							 priv->mst_payload_ids, 1,
-							 ARRAY_SIZE(priv->mst_payload_ids));
-
-		if (err < 0) {
-			dev_info(dev,
-				 "%s: MST Payload prop not found or invalid\n",
-				 __func__);
-			return -EINVAL;
-		}
-
-		ret = max_gmsl_dp_ser_check_dups(priv->mst_payload_ids);
-		if (!ret) {
-			dev_err(dev, "%s: payload IDs are not unique\n",
-				__func__);
-			return -EINVAL;
-		}
-
-		err = of_property_read_variable_u8_array(ser,
-							 "gmsl-stream-ids",
-							 priv->gmsl_stream_ids, 1,
-							 ARRAY_SIZE(priv->gmsl_stream_ids));
-		if (err < 0) {
-			dev_info(dev,
-				 "%s: GMSL Stream ID property not found or invalid\n",
-				 __func__);
-			return -EINVAL;
-		}
-
-		ret = max_gmsl_dp_ser_check_dups(priv->gmsl_stream_ids);
-		if (!ret) {
-			dev_err(dev, "%s: stream IDs are not unique\n",
-				__func__);
-			return -EINVAL;
-		}
-	}
-
-	return 0;
-}
-
-static int max_gmsl_dp_ser_parse_dt(struct i2c_client *client,
-				    struct max_gmsl_dp_ser_priv *priv)
+static int max_gmsl_dp_ser_init_priv(struct i2c_client *client,
+					struct max_gmsl_dp_ser_priv *priv)
 {
 	struct device *dev = &priv->client->dev;
 	struct device_node *ser = dev->of_node;
 	int err = 0, i;
 	u32 val = 0;
 
-	dev_info(dev, "%s: parsing serializer device tree:\n", __func__);
+	dev_info(dev, "%s: init serializer device:\n", __func__);
 
-	err = of_property_read_u32(ser, "dprx-lane-count", &val);
-	if (err) {
-		if (err == -EINVAL) {
-			dev_info(dev, "%s: - dprx-lane-count property not found\n",
-				 __func__);
-			/* default value: 4 */
-			priv->dprx_lane_count = 4;
-			dev_info(dev, "%s: dprx-lane-count set to default val: 4\n",
-				 __func__);
-		} else {
-			return err;
-		}
-	} else {
-		/* set dprx-lane-count */
-		priv->dprx_lane_count = val;
-		dev_info(dev, "%s: - dprx-lane-count %i\n", __func__, val);
-	}
+	priv->dprx_lane_count = MAX_GMSL_DP_SER_DPRX_LANE_COUNT;
+	dev_info(dev, "%s: - dprx-lane-count %i\n", __func__, val);
 
-	err = of_property_read_u32(ser, "dprx-link-rate", &val);
-	if (err) {
-		if (err == -EINVAL) {
-			dev_info(dev, "%s: - dprx-link-rate property not found\n",
-				 __func__);
-			/* default value: 0x1E */
-			priv->dprx_link_rate = 0x1E;
-			dev_info(dev, "%s: dprx-link-rate set to default val: 0x1E\n",
-				 __func__);
-		} else {
-			return err;
-		}
-	} else {
-		/* set dprx-link-rate*/
-		priv->dprx_link_rate = val;
-		dev_info(dev, "%s: - dprx-link-rate %i\n", __func__, val);
-	}
+	priv->dprx_link_rate = MAX_GMSL_DP_SER_DPRX_LINK_RATE;
+	dev_info(dev, "%s: - dprx-link-rate %i\n", __func__, val);
 
-	err = of_property_read_variable_u8_array(ser, "gmsl-link-select",
-						 priv->gmsl_link_select, 1,
-						 ARRAY_SIZE(priv->gmsl_link_select));
-	if (err < 0) {
-		dev_info(dev,
-			 "%s: GMSL Link select property not found or invalid\n",
-			 __func__);
-		return -EINVAL;
-	}
+	uint8_t buf[] = MAX_GMSL_DP_SER_GMSL_LINK_SELECT;
+	memcpy(priv->gmsl_link_select, buf, sizeof(buf));
 
 	for (i = 0; i < ARRAY_SIZE(priv->gmsl_link_select); i++) {
 		if ((priv->gmsl_link_select[i] == MAX_GMSL_DP_SER_ENABLE_LINK_A)
@@ -559,21 +408,16 @@ static int max_gmsl_dp_ser_parse_dt(struct i2c_client *client,
 			return -EINVAL;
 		}
 	}
-
-	err = max_gmsl_dp_ser_parse_mst_props(client, priv);
-	if (err != 0) {
-		dev_err(dev, "%s: error parsing MST props\n", __func__);
-		return -EFAULT;
-	}
-
-	return 0;
+	return err;
 }
 
-static int max_gmsl_dp_ser_probe(struct i2c_client *client)
+static int max_gmsl_dp_ser_des_probe(struct i2c_client *client)
 {
 	struct max_gmsl_dp_ser_priv *priv;
 	struct device *dev;
+	#if 0
 	struct device_node *ser = client->dev.of_node;
+	#endif
 	int ret;
 
 	priv = devm_kzalloc(&client->dev, sizeof(*priv), GFP_KERNEL);
@@ -599,9 +443,9 @@ static int max_gmsl_dp_ser_probe(struct i2c_client *client)
 		return -ENODEV;
 	}
 
-	ret = max_gmsl_dp_ser_parse_dt(client, priv);
+	ret = max_gmsl_dp_ser_init_priv(client, priv);
 	if (ret < 0) {
-		dev_err(dev, "%s: error parsing device tree\n", __func__);
+		dev_err(dev, "%s: error init device\n", __func__);
 		return -EFAULT;
 	}
 
@@ -624,33 +468,10 @@ static int max_gmsl_dp_ser_probe(struct i2c_client *client)
 			       MAX_GMSL_DP_SER_INTR8_MASK,
 			       MAX_GMSL_DP_SER_INTR8_VAL);
 
-	priv->ser_errb = of_get_named_gpio(ser, "ser-errb", 0);
-
-	ret = devm_gpio_request_one(&client->dev, priv->ser_errb,
-				    GPIOF_DIR_IN, "GPIO_MAXIM_SER");
-	if (ret < 0) {
-		dev_err(dev, "%s: GPIO request failed\n ret: %d",
-			__func__, ret);
-		return ret;
-	}
-
-	if (gpio_is_valid(priv->ser_errb)) {
-		priv->ser_irq = gpio_to_irq(priv->ser_errb);
-		ret = request_threaded_irq(priv->ser_irq, NULL,
-					   max_gsml_dp_ser_irq_handler,
-					   IRQF_TRIGGER_FALLING
-					   | IRQF_ONESHOT, "SER", priv);
-		if (ret < 0) {
-			dev_err(dev, "%s: Unable to register IRQ handler ret: %d\n",
-				__func__, ret);
-			return ret;
-		}
-
-	}
 	return ret;
 }
 
-static int max_gmsl_dp_ser_remove(struct i2c_client *client)
+static int max_gmsl_dp_ser_des_remove(struct i2c_client *client)
 {
 	struct max_gmsl_dp_ser_priv *priv = i2c_get_clientdata(client);
 
@@ -660,23 +481,139 @@ static int max_gmsl_dp_ser_remove(struct i2c_client *client)
 	return 0;
 }
 
-static const struct of_device_id max_gmsl_dp_ser_dt_ids[] = {
-	{ .compatible = "maxim,max_gmsl_dp_ser" },
+#ifdef CONFIG_PM
+static int max_ser_des_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int max_ser_des_resume(struct device *dev)
+{
+	return 0;
+}
+#else
+#define max_ser_des_suspend	NULL
+#define max_ser_des_resume	NULL
+#endif /* CONFIG_PM */
+
+/*
+** I2C Board Info strucutre
+*/
+static struct i2c_board_info max_ser_i2c_board_info = {
+    I2C_BOARD_INFO(SLAVE_SER_DEVICE_NAME, MAX_SER_SLAVE_ADDR),
+	.platform_data = NULL,
+};
+
+static struct i2c_board_info max_des_i2c_board_info = {
+    I2C_BOARD_INFO(SLAVE_DES_DEVICE_NAME, MAX_DES_SLAVE_ADDR),
+	.platform_data = NULL,
+};
+
+
+
+static struct i2c_device_id max_96749_device_id[] = {
+	{ "max,ser96749", 0},
 	{},
 };
-MODULE_DEVICE_TABLE(of, max_gmsl_dp_ser_dt_ids);
 
-static struct i2c_driver max_gmsl_dp_ser_i2c_driver = {
-	.driver	= {
-		.name		= "max_gmsl_dp_ser",
-		.of_match_table	= of_match_ptr(max_gmsl_dp_ser_dt_ids),
-	},
-	.probe_new	= max_gmsl_dp_ser_probe,
-	.remove		= max_gmsl_dp_ser_remove,
+static struct i2c_device_id max_96774_device_id[] = {
+	{ "max,ser96774", 0},
+	{},
 };
 
-module_i2c_driver(max_gmsl_dp_ser_i2c_driver);
+MODULE_DEVICE_TABLE(i2c, max_96749_device_id);
 
-MODULE_DESCRIPTION("Maxim DP GMSL Serializer Driver");
-MODULE_AUTHOR("Vishwaroop");
+static const struct dev_pm_ops max_gmsl_dp_ser_des_pm_ops = {
+	.suspend = max_ser_des_suspend,
+	.resume = max_ser_des_resume,
+};
+
+static struct i2c_driver max_gmsl_dp_ser_i2c_driver = {
+	.driver = {
+		.name = SLAVE_SER_DEVICE_NAME,
+		.pm = &max_gmsl_dp_ser_des_pm_ops,
+	},
+	.probe_new	= max_gmsl_dp_ser_des_probe,
+	.remove	= max_gmsl_dp_ser_des_remove,
+	.id_table = max_96749_device_id,
+};
+
+
+
+static int max_dp_i2c_register() {
+	int ret = -1;
+    max_i2c_adapter = i2c_get_adapter(I2C_BUS_AVAILABLE);
+    
+    if( max_i2c_adapter != NULL ) {
+        max_ser_i2c_client = i2c_new_client_device(max_i2c_adapter, &max_ser_i2c_board_info);
+        if( max_ser_i2c_client != NULL ) {
+            i2c_add_driver(&max_gmsl_dp_ser_i2c_driver);
+            ret = 0;
+        }
+        
+        i2c_put_adapter(max_i2c_adapter);
+    }
+	return ret;
+}
+
+static void max_dp_i2c_unregister() {
+	i2c_unregister_device(max_ser_i2c_client);
+    i2c_del_driver(&max_gmsl_dp_ser_i2c_driver);
+}
+/*
+** Module Init function
+*/
+static int __init max_ser_des_init(void)
+{
+	int ret;
+
+	ret = max_dp_i2c_register();
+	if (ret)
+		return ret;
+#if 0
+	ret = max_dp_gpio_register();
+	if (ret)
+		goto err_main_was_registered;
+
+	ret = max_dp_pwm_register();
+	if (ret)
+		goto err_gpio_was_registered;
+
+	ret = auxiliary_driver_register(&max_dp_aux_driver);
+	if (ret)
+		goto err_pwm_was_registered;
+
+	ret = auxiliary_driver_register(&max_dp_bridge_driver);
+	if (ret)
+		goto err_aux_was_registered;
+
+	return 0;
+
+err_aux_was_registered:
+	auxiliary_driver_unregister(&max_dp_aux_driver);
+err_pwm_was_registered:
+	max_dp_pwm_unregister();
+err_gpio_was_registered:
+	max_dp_gpio_unregister();
+err_main_was_registered:
+	max_dp_i2c_unregister();
+#endif
+	return ret;
+}
+
+module_init(max_ser_des_init);
+
+/*
+** Module Exit function
+*/
+static void __exit max_ser_des_exit(void)
+{
+	max_dp_i2c_unregister();
+}
+
+module_exit(max_ser_des_exit);
+
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Maxim DP GMSL SerDes Driver");
+MODULE_AUTHOR("Kanli.Hu <kanli.hu@intel.com>");
+
